@@ -41,7 +41,7 @@ class Scraper:
         else:
             return -1
 
-    def comesBefore(self, key, other):
+    def comes_before(self, key, other):
         posKey = self.scout(key)
         posOther = self.scout(other)
         if (posKey >= 0):
