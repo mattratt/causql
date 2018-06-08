@@ -1,9 +1,7 @@
-import urllib2
-import xml.etree.ElementTree as etree
-# from lxml import etree
 from scraper import Scraper
 
 
+# reference:
 # https://meta.stackexchange.com/questions/288059/how-to-download-dataexplorer-queries
 
 
@@ -13,8 +11,6 @@ QUERY_LIST_URL = 'http://data.stackexchange.com/stackoverflow/queries?order_by=e
 
 def get_query_list_url(page, rpp):
     return QUERY_LIST_URL.format(page, rpp)
-
-
 
 
 # <li>
@@ -34,24 +30,9 @@ def get_query_list_url(page, rpp):
 #     </div>
 #     <div class="clear"></div>
 # </li>
-
 def get_query_links(page, rpp=100):
     url = get_query_list_url(page, rpp)
     print url
-
-    # response = urllib2.urlopen(url)
-    # html_raw = response.read()
-    # print html_raw
-
-
-    # html_parsed = etree.fromstring(html_raw, etree.XMLParser(encoding='utf-8'))
-    # parser = etree.XMLParser(recover=True)
-    # html_parsed = etree.fromstring(html_raw, parser=parser)
-    #
-    # for query_elt in html_parsed.findall("[@class='title']"):
-    #     query_a = query_elt.find('h3/a')
-    #     url = query_a.get('href')
-    #     title = query_a.text
 
     scrape = Scraper(url)
     i = 0
