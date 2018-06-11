@@ -138,8 +138,10 @@ def get_query_infos(outfile_name, cache_prev=False, rpp=100):
                         writer.writerow(tup)
                         write_count += 1
                     except UnicodeEncodeError as err:
-                        write_err_count += 1
-                        print "can't write tup:", tup, "({} errs)".format(write_err_count)
+                        # write_err_count += 1
+                        # print "can't write tup:", tup, "({} errs)".format(write_err_count)
+                        tup = [ t.encode("utf-8") for t in tup ]
+                        writer.writerow(tup)
 
         # query_tups.extend(tups)
     # return query_tups
@@ -162,7 +164,7 @@ if __name__ == '__main__':
 
     outfile_path = sys.argv[1]
 
-    get_query_infos(outfile_path, cache_prev=True)
+    get_query_infos(outfile_path, cache_prev=False)
 
 
 
