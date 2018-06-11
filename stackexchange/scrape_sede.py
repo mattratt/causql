@@ -110,7 +110,9 @@ def get_query_infos(outfile_name, cache_prev=False, rpp=100):
     if cache_prev:
         prev_urls = read_query_urls_from_file(outfile_name)
 
-    query_tups = []
+    # query_tups = []
+    write_count = 0
+    write_err_count = 0
     for page in range(1, 3000000):
         query_urls = get_query_links(page, rpp)
 
@@ -134,13 +136,14 @@ def get_query_infos(outfile_name, cache_prev=False, rpp=100):
                 if tup is not None:
                     try:
                         writer.writerow(tup)
+                        write_count += 1
                     except UnicodeEncodeError as err:
-                        print "can't write tup:", tup
+                        write_err_count += 1
+                        print "can't write tup:", tup, "({} errs)".format(write_err_count)
 
-        query_tups.extend(tups)
-
-    return query_tups
-
+        # query_tups.extend(tups)
+    # return query_tups
+    return write_count, write_err_count
 
 def read_query_urls_from_file(file_path):
     query_urls = set()
