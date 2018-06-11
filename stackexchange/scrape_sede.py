@@ -91,6 +91,8 @@ def get_query_info(url):
     scrape.move_to('<pre id="queryBodyText" class="cm-s-default">')
     sql_raw = scrape.pull_from_to('<code>', '</code>')
     sql = clean_sql(sql_raw)
+    scrape.move_to('> created <span')
+    ts = scrape.pull_from_to('title="', '" class="relativetime"')
     scrape.move_to('<div class="user-gravatar32">')
     if scrape.comes_before('<a href="/users', '</div>'):
         user_id = scrape.pull_from_to('<a href="/users/', '"><img ')
@@ -99,7 +101,7 @@ def get_query_info(url):
     else:
         user_id = None
         user_name = None
-    return (url, sql, user_id, user_name)
+    return (ts, url, sql, user_id, user_name)
 
 
 def get_query_infos(outfile_name, cache_prev=False, rpp=100):
@@ -147,7 +149,7 @@ def read_query_urls_from_file(file_path):
         for i, row in enumerate(reader):
             if i % 100000 == 0:
                 print "\t", i, "\t", len(query_urls)
-            url, sql, user_id, user_name = row
+            ts, url, sql, user_id, user_name = row
             query_urls.add(url)
     return query_urls
 
