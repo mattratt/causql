@@ -1,5 +1,13 @@
-from scraper import Scraper
+import sys
+import logging
+import csv
+import getpass
 from HTMLParser import HTMLParser
+from urllib2 import URLError
+from httplib import BadStatusLine
+from joblib import Parallel, delayed
+from scraper import Scraper
+
 
 # reference:
 # https://meta.stackexchange.com/questions/288059/how-to-download-dataexplorer-queries
@@ -9,7 +17,9 @@ QUERY_LIST_URL = 'http://data.stackexchange.com/stackoverflow/queries?order_by=e
                  '&page={}&pagesize={}'
 
 
-html_parser = HTMLParser()  # we should prob use this for everything instead of low budget scaper
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
+csv.field_size_limit(sys.maxsize)
+html_parser = HTMLParser()  # we should prob use this for everything instead of low-budget scraper
 
 
 def get_query_list_url(page, rpp):
@@ -44,15 +54,19 @@ def get_query_links(page, rpp):
         url = 'http://data.stackexchange.com/' + scrape.pull_from_to(' href="', '"')
         title = scrape.pull_from_to('>', '</a>')
         query_urls.append(url)
-
-        print i, title, url
-        print ""
+        # print i, title, url
+        # print ""
         i += 1
     return query_urls
 
 
 def clean_sql(sql):
-    return html_parser.unescape(' '.join(sql.split()))
+    sql_space = ' '.join(sql.split())
+    try:
+        sql_unesc = html_parser.unescape(sql_space)
+    except UnicodeDecodeError:
+        return sql_space
+    return sql_unesc
 
 
 # <pre id="queryBodyText" class="cm-s-default"><code>select * from comments where text like &#39;%lamp%&#39;</code></pre>
@@ -68,7 +82,12 @@ def clean_sql(sql):
 #         </div>
 # </div>
 def get_query_info(url):
-    scrape = Scraper(url)
+    try:
+        scrape = Scraper(url)
+    except (URLError, BadStatusLine) as err:
+        print "url error: ", url, err
+        return None
+
     scrape.move_to('<pre id="queryBodyText" class="cm-s-default">')
     sql_raw = scrape.pull_from_to('<code>', '</code>')
     sql = clean_sql(sql_raw)
@@ -80,30 +99,65 @@ def get_query_info(url):
     else:
         user_id = None
         user_name = None
-    return (sql, user_id, user_name)
+    return (url, sql, user_id, user_name)
 
 
-def get_query_infos(rpp=100):
+def get_query_infos(outfile_name, cache_prev=False, rpp=100):
+
+    prev_urls = {}
+    if cache_prev:
+        prev_urls = read_query_urls_from_file(outfile_name)
+
     query_tups = []
-    for page in range(1, 1000000):
+    for page in range(1, 3000000):
         query_urls = get_query_links(page, rpp)
-        print "page {}, got {} query urls".format(page, len(query_urls))
 
-        if (page > 3) or len(query_urls) == 0:
+        if len(query_urls) == 0:
             break
 
-        for i, url in enumerate(query_urls):
-            tup = get_query_info(url)
-            print i, tup
-            query_tups.append(tup)
+        # for i, url in enumerate(query_urls):
+        #     tup = get_query_info(url)
+        #     print i, tup
+        #     query_tups.append(tup)
+
+        query_urls = [ u for u in query_urls if u not in prev_urls ]
+        print "page {}, got {} query urls".format(page, len(query_urls))
+
+        # Parallel(n_jobs=2)(delayed(sqrt)(i ** 2) for i in range(10))
+        tups = Parallel(n_jobs=4)(delayed(get_query_info)(url) for url in query_urls)
+
+        with open(outfile_name, 'a') as outfile:
+            writer = csv.writer(outfile, delimiter="\t")
+            for tup in tups:
+                if tup is not None:
+                    try:
+                        writer.writerow(tup)
+                    except UnicodeEncodeError as err:
+                        print "can't write tup:", tup
+
+        query_tups.extend(tups)
 
     return query_tups
+
+
+def read_query_urls_from_file(file_path):
+    query_urls = set()
+    with open(file_path, 'r') as infile:
+        reader = csv.reader(infile, delimiter="\t")
+        for i, row in enumerate(reader):
+            if i % 100000 == 0:
+                print "\t", i, "\t", len(query_urls)
+            url, sql, user_id, user_name = row
+            query_urls.add(url)
+    return query_urls
 
 
 #####################################################
 if __name__ == '__main__':
 
-    get_query_infos()
+    outfile_path = sys.argv[1]
+
+    get_query_infos(outfile_path, cache_prev=True)
 
 
 
