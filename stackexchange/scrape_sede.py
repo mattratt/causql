@@ -1,6 +1,8 @@
 import sys
 import logging
 import csv
+import datetime
+import os.path
 import getpass
 from HTMLParser import HTMLParser
 from urllib2 import URLError
@@ -15,6 +17,8 @@ from scraper import Scraper
 
 QUERY_LIST_URL = 'http://data.stackexchange.com/stackoverflow/queries?order_by=everything' + \
                  '&page={}&pagesize={}'
+TS_MIN = datetime.datetime.utcfromtimestamp(0.0)
+TS_MAX = datetime.datetime(2112, 1, 1)  # What could this strange device be?
 
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
@@ -53,7 +57,10 @@ def get_query_links(page, rpp):
     while scrape.move_to('<div class="title">') != -1:
         url = 'http://data.stackexchange.com/' + scrape.pull_from_to(' href="', '"')
         title = scrape.pull_from_to('>', '</a>')
-        query_urls.append(url)
+        scrape.move_to('<div class="user">')
+        ts_str = scrape.pull_from_to('<span title="', '" class="relativetime"')
+        ts = parse_ts(ts_str)
+        query_urls.append((ts, url))
         # print i, title, url
         # print ""
         i += 1
@@ -104,27 +111,33 @@ def get_query_info(url):
     return (ts, url, sql, user_id, user_name)
 
 
-def get_query_infos(outfile_name, cache_prev=False, rpp=100):
+def get_query_infos(outfile_name, skip_prev=False, rpp=100):
 
-    prev_urls = {}
-    if cache_prev:
-        prev_urls = read_query_urls_from_file(outfile_name)
+    # prev_urls = {}
+    # if cache_prev:
+    #     prev_urls = read_query_urls_from_file(outfile_name)
+    if skip_prev:
+        start_ts, end_ts = read_query_date_range(outfile_name)
+    else:
+        start_ts = TS_MAX
+        end_ts = TS_MIN
 
-    # query_tups = []
     write_count = 0
-    write_err_count = 0
+    # write_err_count = 0
     for page in range(1, 3000000):
-        query_urls = get_query_links(page, rpp)
+        query_ts_url_tups = get_query_links(page, rpp)
 
-        if len(query_urls) == 0:
+        if len(query_ts_url_tups) == 0:
             break
 
         # for i, url in enumerate(query_urls):
         #     tup = get_query_info(url)
         #     print i, tup
         #     query_tups.append(tup)
+        # query_urls = [ u for u in query_urls if u not in prev_urls ]
 
-        query_urls = [ u for u in query_urls if u not in prev_urls ]
+        query_urls = [ u for ts, u in query_ts_url_tups if ((ts < start_ts) or (ts > end_ts)) ]
+
         print "page {}, got {} query urls".format(page, len(query_urls))
 
         # Parallel(n_jobs=2)(delayed(sqrt)(i ** 2) for i in range(10))
@@ -132,7 +145,7 @@ def get_query_infos(outfile_name, cache_prev=False, rpp=100):
 
         with open(outfile_name, 'a') as outfile:
             writer = csv.writer(outfile, delimiter="\t")
-            for tup in tups:
+            for tup in tups:  # (ts, url, sql, user_id, user_name)
                 if tup is not None:
                     try:
                         writer.writerow(tup)
@@ -140,23 +153,52 @@ def get_query_infos(outfile_name, cache_prev=False, rpp=100):
                     except UnicodeEncodeError as err:
                         # write_err_count += 1
                         # print "can't write tup:", tup, "({} errs)".format(write_err_count)
-                        tup = [ t.encode("utf-8") for t in tup ]
-                        writer.writerow(tup)
 
-        # query_tups.extend(tups)
-    # return query_tups
-    return write_count, write_err_count
+                        ts, url, sql, user_id, user_name = tup
+                        url = url.encode("utf-8")
+                        sql = sql.encode("utf-8")
+                        if user_name:
+                            user_name = user_name.encode("utf-8")
+                        writer.writerow((ts, url, sql, user_id, user_name))
 
-def read_query_urls_from_file(file_path):
-    query_urls = set()
-    with open(file_path, 'r') as infile:
-        reader = csv.reader(infile, delimiter="\t")
-        for i, row in enumerate(reader):
-            if i % 100000 == 0:
-                print "\t", i, "\t", len(query_urls)
-            ts, url, sql, user_id, user_name = row
-            query_urls.add(url)
-    return query_urls
+    return write_count
+
+
+# def read_query_urls_from_file(file_path):
+#     query_urls = set()
+#     with open(file_path, 'r') as infile:
+#         reader = csv.reader(infile, delimiter="\t")
+#         for i, row in enumerate(reader):
+#             if i % 100000 == 0:
+#                 print "\t", i, "\t", len(query_urls)
+#             ts, url, sql, user_id, user_name = row
+#             query_urls.add(url)
+#     return query_urls
+
+
+def read_query_date_range(file_path):
+    start_ts = TS_MAX
+    end_ts = TS_MIN
+    if os.path.isfile(file_path):
+        with open(file_path, 'r') as infile:
+            reader = csv.reader(infile, delimiter="\t")
+            for i, row in enumerate(reader):
+                if i % 100000 == 0:
+                    print "\t{}\t{}\t{}".format(i, start_ts, end_ts)
+                ts_str, url, sql, user_id, user_name = row
+                ts = parse_ts(ts_str)
+
+                if ts < start_ts:
+                    start_ts = ts
+                if ts > end_ts:
+                    end_ts = ts
+    print "previous ts range: {} - {}".format(start_ts, end_ts)
+    return start_ts, end_ts
+
+
+def parse_ts(ts_str):
+    return datetime.datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%SZ')
+
 
 
 #####################################################
@@ -164,7 +206,7 @@ if __name__ == '__main__':
 
     outfile_path = sys.argv[1]
 
-    get_query_infos(outfile_path, cache_prev=False)
+    get_query_infos(outfile_path, skip_prev=True)
 
 
 
