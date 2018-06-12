@@ -111,7 +111,7 @@ def get_query_info(url):
     return (ts, url, sql, user_id, user_name)
 
 
-def get_query_infos(outfile_name, skip_prev=False, rpp=100):
+def get_query_infos(outfile_name, n_jobs=4, skip_prev=False, rpp=100):
 
     # prev_urls = {}
     # if cache_prev:
@@ -141,7 +141,7 @@ def get_query_infos(outfile_name, skip_prev=False, rpp=100):
         print "page {}, got {} query urls".format(page, len(query_urls))
 
         # Parallel(n_jobs=2)(delayed(sqrt)(i ** 2) for i in range(10))
-        tups = Parallel(n_jobs=4)(delayed(get_query_info)(url) for url in query_urls)
+        tups = Parallel(n_jobs=n_jobs)(delayed(get_query_info)(url) for url in query_urls)
 
         with open(outfile_name, 'a') as outfile:
             writer = csv.writer(outfile, delimiter="\t")
@@ -205,8 +205,9 @@ def parse_ts(ts_str):
 if __name__ == '__main__':
 
     outfile_path = sys.argv[1]
+    num_procs = int(sys.argv[2])
 
-    get_query_infos(outfile_path, skip_prev=True)
+    get_query_infos(outfile_path, n_jobs=num_procs, skip_prev=True)
 
 
 
